@@ -1,0 +1,1247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NDN Network Monitor - Dashboard</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+        
+        .metric-value {
+            font-family: 'Courier New', monospace;
+            font-size: 1.875rem;
+            font-weight: 600;
+        }
+        
+        .metric-label {
+            font-size: 0.875rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+        }
+        
+        .card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+        }
+        
+        .card:hover {
+            border-color: #475569;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 0.75rem;
+            height: 0.75rem;
+            border-radius: 50%;
+            background: #22c55e;
+            box-shadow: 0 0 0 8px rgba(34, 197, 94, 0.15);
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        
+        .status-indicator.disconnected {
+            background: #ef4444;
+            box-shadow: 0 0 0 8px rgba(239, 68, 68, 0.15);
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+        
+        .node-badge {
+            padding: 0.375rem 0.75rem;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 2px solid transparent;
+        }
+        
+        .node-badge.healthy {
+            background: rgba(34, 197, 94, 0.1);
+            color: #22c55e;
+            border-color: rgba(34, 197, 94, 0.3);
+        }
+        
+        .node-badge.warning {
+            background: rgba(234, 179, 8, 0.1);
+            color: #eab308;
+            border-color: rgba(234, 179, 8, 0.3);
+        }
+        
+        .node-badge.critical {
+            background: rgba(239, 68, 68, 0.1);
+            color: #ef4444;
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+        
+        .node-badge.idle {
+            background: rgba(148, 163, 184, 0.1);
+            color: #94a3b8;
+            border-color: rgba(148, 163, 184, 0.3);
+        }
+        
+        .node-badge.active {
+            background: #3b82f6;
+            color: white;
+            border-color: #1d4ed8;
+        }
+        
+        .alert-item {
+            padding: 1rem;
+            border-left: 4px solid;
+            border-radius: 0.375rem;
+            background: #1e293b;
+            margin-bottom: 0.75rem;
+            animation: slideInDown 0.3s ease;
+            transition: all 0.2s;
+        }
+        
+        .alert-item.critical {
+            border-left-color: #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+        }
+        
+        .alert-item.critical .alert-badge {
+            background: #ef4444;
+        }
+        
+        .alert-item.warning {
+            border-left-color: #eab308;
+            background: rgba(234, 179, 8, 0.1);
+        }
+        
+        .alert-item.warning .alert-badge {
+            background: #eab308;
+        }
+        
+        .alert-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: white;
+            text-transform: uppercase;
+        }
+        
+        @keyframes slideInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-1rem);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin: 1rem 0;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            animation: fadeIn 0.2s ease;
+        }
+        
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .modal-content {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 0.75rem;
+            padding: 2rem;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            animation: slideUp 0.3s ease;
+        }
+        
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(1rem);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .btn {
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            border: none;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #2563eb;
+        }
+        
+        .btn-secondary {
+            background: #475569;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #64748b;
+        }
+        
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+        
+        .input-field {
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: #e2e8f0;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+        }
+        
+        .input-field:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        
+        .loading-spinner {
+            display: inline-block;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        .text-healthy { color: #22c55e; }
+        .text-warning { color: #eab308; }
+        .text-critical { color: #ef4444; }
+        .text-danger { color: #ef4444; }
+        
+        .bg-danger-subtle { background: rgba(239, 68, 68, 0.1); }
+        .bg-warning-subtle { background: rgba(234, 179, 8, 0.1); }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        thead {
+            background: #0f172a;
+            border-bottom: 2px solid #334155;
+        }
+        
+        th {
+            padding: 0.75rem;
+            text-align: left;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #94a3b8;
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        th:hover {
+            background: #1e293b;
+        }
+        
+        td {
+            padding: 0.75rem;
+            border-top: 1px solid #334155;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+        }
+        
+        tbody tr:hover {
+            background: rgba(59, 130, 246, 0.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="min-h-screen pb-8">
+        <!-- Header -->
+        <header class="bg-gradient-to-r from-slate-900 to-slate-800 border-b border-slate-700 sticky top-0 z-50">
+            <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="text-2xl font-bold text-blue-400">🌐</div>
+                    <h1 class="text-2xl font-bold">NDN Network Monitor</h1>
+                </div>
+                
+                <div class="flex items-center gap-4">
+                    <div class="flex items-center gap-2 text-sm">
+                        <span class="status-indicator" id="wsStatus"></span>
+                        <span id="wsStatusText">Connecting...</span>
+                    </div>
+                    
+                    <div class="text-sm text-gray-400" id="statsText">
+                        <span id="nodeCount">0</span> nodes
+                        <span class="mx-1">•</span>
+                        Last update: <span id="lastUpdate">—</span>
+                    </div>
+                    
+                    <div class="relative">
+                        <button class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 transition text-lg relative" id="alertBellBtn">
+                            🔔
+                            <span id="alertBadge" class="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center" style="display: none;"></span>
+                        </button>
+                    </div>
+                    
+                    <button class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 transition" id="settingsBtn">⚙️</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="max-w-7xl mx-auto px-6 py-8">
+            <!-- Node Selector -->
+            <div class="mb-8">
+                <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Select Nodes</h2>
+                <div class="flex flex-wrap gap-2" id="nodeSelector">
+                    <button class="node-badge active" data-node="all">All Nodes</button>
+                </div>
+            </div>
+
+            <!-- Overview Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div class="card">
+                    <div class="metric-label">Interest Rate</div>
+                    <div class="metric-value text-blue-400" id="metricInterestRate">—</div>
+                    <div class="text-xs text-gray-500 mt-2">interests/sec</div>
+                </div>
+                
+                <div class="card">
+                    <div class="metric-label">Satisfaction Ratio</div>
+                    <div class="metric-value text-green-400" id="metricSatisfaction">—</div>
+                    <div class="text-xs text-gray-500 mt-2">percentage</div>
+                </div>
+                
+                <div class="card">
+                    <div class="metric-label">PIT Size</div>
+                    <div class="metric-value text-purple-400" id="metricPIT">—</div>
+                    <div class="text-xs text-gray-500 mt-2">pending interests</div>
+                </div>
+                
+                <div class="card">
+                    <div class="metric-label">CS Entries</div>
+                    <div class="metric-value text-amber-400" id="metricCS">—</div>
+                    <div class="text-xs text-gray-500 mt-2">cache entries</div>
+                </div>
+            </div>
+
+            <!-- Charts -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <div class="card">
+                    <h3 class="metric-label mb-4">Interest Rate Over Time</h3>
+                    <div class="chart-container">
+                        <canvas id="interestRateChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h3 class="metric-label mb-4">Satisfaction Ratio Over Time</h3>
+                    <div class="chart-container">
+                        <canvas id="satisfactionChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h3 class="metric-label mb-4">PIT Size Over Time</h3>
+                    <div class="chart-container">
+                        <canvas id="pitChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h3 class="metric-label mb-4">NACK Rate Over Time</h3>
+                    <div class="chart-container">
+                        <canvas id="nackChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alerts Panel -->
+            <div class="card mb-8">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="metric-label">Active Alerts</h3>
+                    <div class="flex items-center gap-2 flex-wrap justify-end">
+                        <select id="alertNodeFilter" class="px-2 py-1 text-xs rounded bg-slate-700 text-slate-200 border border-slate-600 focus:outline-none focus:border-blue-500">
+                            <option value="all">All Nodes</option>
+                        </select>
+                        <button class="px-2 py-1 text-xs rounded bg-blue-600 text-white" id="alertFilterAll">All</button>
+                        <button class="px-2 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600 text-slate-200" id="alertFilterWarning">Warning</button>
+                        <button class="px-2 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600 text-slate-200" id="alertFilterCritical">Critical</button>
+                        <button class="text-sm text-blue-400 hover:text-blue-300" id="clearAlertsBtn" style="display: none;">Clear All</button>
+                    </div>
+                </div>
+                <div id="alertsPanel" class="space-y-2">
+                    <div class="text-center text-gray-500 py-4">No active alerts</div>
+                </div>
+            </div>
+
+            <!-- Metrics Table -->
+            <div class="card">
+                <h3 class="metric-label mb-4">Latest Metrics</h3>
+                <div style="overflow-x: auto;">
+                    <table id="metricsTable">
+                        <thead>
+                            <tr>
+                                <th>Node</th>
+                                <th>Status</th>
+                                <th>Uptime (s)</th>
+                                <th>Interest Rate</th>
+                                <th>Satisfaction %</th>
+                                <th>PIT Size</th>
+                                <th>CS Entries</th>
+                                <th>In Interests</th>
+                                <th>Out Interests</th>
+                            </tr>
+                        </thead>
+                        <tbody id="metricsTableBody">
+                            <tr>
+                                <td colspan="9" class="text-center text-gray-500 py-4">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal" id="settingsModal">
+        <div class="modal-content">
+            <h2 class="text-xl font-bold mb-4">Settings & Configuration</h2>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold mb-2">Logs Directory</label>
+                    <div class="input-field bg-slate-700 cursor-not-allowed" id="logsDirDisplay">—</div>
+                </div>
+                
+                <div class="border-t border-slate-700 pt-4">
+                    <h3 class="text-sm font-semibold mb-3">Anomaly Thresholds</h3>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-xs text-gray-400 mb-2 block">Interest Rate Warning<br><span class="text-gray-500">(interests/sec)</span></label>
+                            <input type="number" class="input-field w-full" id="thresholdInterestWarning" step="0.1">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400 mb-2 block">Interest Rate Critical<br><span class="text-gray-500">(interests/sec)</span></label>
+                            <input type="number" class="input-field w-full" id="thresholdInterestCritical" step="0.1">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400 mb-2 block">Satisfaction Warning<br><span class="text-gray-500">(%)</span></label>
+                            <input type="number" class="input-field w-full" id="thresholdSatisfactionWarning" min="0" max="100" step="0.1">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400 mb-2 block">Satisfaction Critical<br><span class="text-gray-500">(%)</span></label>
+                            <input type="number" class="input-field w-full" id="thresholdSatisfactionCritical" min="0" max="100" step="0.1">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex gap-2 justify-end mt-6">
+                <button class="btn btn-secondary" id="closeSettingsBtn">Close</button>
+                <button class="btn btn-primary" id="saveSettingsBtn">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ====================================================================
+        // Global State & Configuration
+        // ====================================================================
+        
+        const state = {
+            nodes: {},
+            selectedNode: 'all',
+            alerts: [],
+            alertFilter: 'all',
+            alertNodeFilter: 'all',
+            ws: null,
+            wsConnected: false,
+            thresholds: {},
+            lastUpdate: null,
+            charts: {},
+            chartRequestId: 0
+        };
+        
+        const colors = {
+            blue: '#3b82f6',
+            green: '#22c55e',
+            purple: '#a855f7',
+            amber: '#eab308',
+            red: '#ef4444',
+            cyan: '#06b6d4'
+        };
+        
+        const nodeColors = {};
+        const colorList = ['#3b82f6', '#06b6d4', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#6366f1'];
+        let colorIndex = 0;
+        
+        // ====================================================================
+        // WebSocket Connection
+        // ====================================================================
+        
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            
+            state.ws = new WebSocket(wsUrl);
+            
+            state.ws.onopen = () => {
+                console.log('WebSocket connected');
+                updateWSStatus(true);
+            };
+            
+            state.ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                handleWSMessage(message);
+            };
+            
+            state.ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                updateWSStatus(false);
+            };
+            
+            state.ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                updateWSStatus(false);
+                // Attempt to reconnect after delay
+                setTimeout(connectWebSocket, 3000);
+            };
+        }
+        
+        function updateWSStatus(connected) {
+            state.wsConnected = connected;
+            const status = document.getElementById('wsStatus');
+            const text = document.getElementById('wsStatusText');
+            
+            if (connected) {
+                status.classList.remove('disconnected');
+                text.textContent = 'Connected';
+            } else {
+                status.classList.add('disconnected');
+                text.textContent = 'Disconnected';
+            }
+        }
+        
+        function handleWSMessage(message) {
+            state.lastUpdate = new Date();
+            updateLastUpdateTime();
+            
+            switch (message.type) {
+                case 'initial_state':
+                    handleInitialState(message.payload);
+                    break;
+                case 'state_sync':
+                    handleStateSync(message.payload);
+                    break;
+                case 'metrics':
+                    handleMetricsUpdate(message.payload);
+                    break;
+                case 'alert':
+                    handleAlertUpdate(message.payload);
+                    break;
+                case 'node_discovered':
+                    handleNodeDiscovered(message.payload);
+                    break;
+                case 'log':
+                    console.log('Server log:', message.payload);
+                    break;
+            }
+        }
+        
+        function handleInitialState(payload) {
+            state.nodes = {};
+            payload.nodes.forEach(node => {
+                state.nodes[node.name] = node;
+                if (!nodeColors[node.name]) {
+                    nodeColors[node.name] = colorList[colorIndex % colorList.length];
+                    colorIndex++;
+                }
+            });
+            
+            state.alerts = payload.alerts;
+            state.thresholds = payload.thresholds;
+            
+            updateNodeSelector();
+            updateNodeBadges();
+            refreshAlertNodeFilterOptions();
+            updateAlerts();
+            updateMetricsTable();
+            updateMetricsCards();
+            loadCharts();
+        }
+        
+        function handleStateSync(payload) {
+            payload.nodes.forEach(node => {
+                if (state.nodes[node.name]) {
+                    state.nodes[node.name] = node;
+                    updateNodeBadge(node.name);
+                }
+            });
+            updateMetricsCards();
+            updateMetricsTable();
+        }
+        
+        function handleMetricsUpdate(payload) {
+            const { node, entry } = payload;
+            if (!state.nodes[node]) return;
+            
+            state.nodes[node].last_metric = entry;
+            state.nodes[node].has_data = true;
+            
+            updateCharts();
+            updateMetricsCards();
+            updateMetricsTable();
+        }
+        
+        function handleAlertUpdate(payload) {
+            const alert = payload;
+            
+            // Check if alert already exists
+            if (!state.alerts.some(a => a.id === alert.id)) {
+                state.alerts.push(alert);
+                playAlertSound();
+            }
+            
+            updateAlerts();
+        }
+        
+        function handleNodeDiscovered(payload) {
+            const { node } = payload;
+            if (!state.nodes[node]) {
+                state.nodes[node] = {
+                    name: node,
+                    status: 'idle',
+                    has_data: false,
+                    last_metric: null
+                };
+                
+                if (!nodeColors[node]) {
+                    nodeColors[node] = colorList[colorIndex % colorList.length];
+                    colorIndex++;
+                }
+                
+                updateNodeSelector();
+                updateNodeBadges();
+                refreshAlertNodeFilterOptions();
+            }
+        }
+        
+        // ====================================================================
+        // UI Update Functions
+        // ====================================================================
+        
+        function updateNodeSelector() {
+            const selector = document.getElementById('nodeSelector');
+            selector.innerHTML = '';
+
+            const allButton = document.createElement('button');
+            allButton.className = 'node-badge';
+            allButton.dataset.node = 'all';
+            allButton.textContent = 'All Nodes';
+            allButton.addEventListener('click', () => selectNode('all'));
+            selector.appendChild(allButton);
+            
+            Object.values(state.nodes).forEach(node => {
+                const badge = document.createElement('button');
+                badge.className = 'node-badge';
+                badge.dataset.node = node.name;
+                badge.textContent = `${node.name} ${getStatusIndicator(node.status)}`;
+                badge.addEventListener('click', () => selectNode(node.name));
+                selector.appendChild(badge);
+            });
+
+            applyNodeSelectorActiveState();
+        }
+
+        function applyNodeSelectorActiveState() {
+            document.querySelectorAll('.node-badge').forEach(badge => {
+                badge.classList.remove('active');
+                if (badge.dataset.node === state.selectedNode) {
+                    badge.classList.add('active');
+                }
+            });
+        }
+        
+        function getStatusIndicator(status) {
+            switch (status) {
+                case 'healthy': return '●';
+                case 'warning': return '⚠';
+                case 'critical': return '🔴';
+                default: return '◌';
+            }
+        }
+        
+        function updateNodeBadges() {
+            Object.values(state.nodes).forEach(node => {
+                updateNodeBadge(node.name);
+            });
+        }
+        
+        function updateNodeBadge(nodeName) {
+            const node = state.nodes[nodeName];
+            if (!node) return;
+            
+            const badges = document.querySelectorAll(`[data-node="${nodeName}"]`);
+            badges.forEach(badge => {
+                const isActive = badge.dataset.node === state.selectedNode;
+                badge.className = `node-badge ${node.status}${isActive ? ' active' : ''}`;
+                badge.textContent = `${nodeName} ${getStatusIndicator(node.status)}`;
+            });
+        }
+        
+        function selectNode(nodeName) {
+            state.selectedNode = nodeName;
+            applyNodeSelectorActiveState();
+            
+            updateCharts();
+            updateMetricsCards();
+        }
+        
+        function updateMetricsCards() {
+            const nodes = state.selectedNode === 'all' 
+                ? Object.values(state.nodes)
+                : [state.nodes[state.selectedNode]].filter(Boolean);
+            
+            if (nodes.length === 0) {
+                document.getElementById('metricInterestRate').textContent = '—';
+                document.getElementById('metricSatisfaction').textContent = '—';
+                document.getElementById('metricPIT').textContent = '—';
+                document.getElementById('metricCS').textContent = '—';
+                return;
+            }
+            
+            const metrics = nodes
+                .filter(n => n.last_metric)
+                .map(n => n.last_metric);
+            
+            if (metrics.length === 0) {
+                document.getElementById('metricInterestRate').textContent = '—';
+                document.getElementById('metricSatisfaction').textContent = '—';
+                document.getElementById('metricPIT').textContent = '—';
+                document.getElementById('metricCS').textContent = '—';
+                return;
+            }
+            
+            // Aggregate or display first
+            const metric = metrics[0];
+            
+            const interestRate = metric.interest_rate !== undefined && metric.interest_rate !== null
+                ? metric.interest_rate.toFixed(1)
+                : '—';
+            const satisfaction = metric.satisfaction_ratio !== undefined && metric.satisfaction_ratio !== null
+                ? metric.satisfaction_ratio.toFixed(1)
+                : '—';
+            const pit = metric.nPitEntries || '—';
+            const cs = metric.nCsEntries || '—';
+            
+            document.getElementById('metricInterestRate').textContent = `${interestRate}`;
+            document.getElementById('metricSatisfaction').textContent = `${satisfaction}%`;
+            document.getElementById('metricPIT').textContent = `${pit}`;
+            document.getElementById('metricCS').textContent = `${cs}`;
+            
+            // Color code based on thresholds
+            const irateEl = document.getElementById('metricInterestRate');
+            if (metric.interest_rate > state.thresholds.interest_rate_critical) {
+                irateEl.className = 'metric-value text-red-400';
+            } else if (metric.interest_rate > state.thresholds.interest_rate_warning) {
+                irateEl.className = 'metric-value text-amber-400';
+            } else {
+                irateEl.className = 'metric-value text-blue-400';
+            }
+            
+            const satEl = document.getElementById('metricSatisfaction');
+            if (metric.satisfaction_ratio < state.thresholds.satisfaction_critical) {
+                satEl.className = 'metric-value text-red-400';
+            } else if (metric.satisfaction_ratio < state.thresholds.satisfaction_warning) {
+                satEl.className = 'metric-value text-amber-400';
+            } else {
+                satEl.className = 'metric-value text-green-400';
+            }
+        }
+        
+        function refreshAlertNodeFilterOptions() {
+            const select = document.getElementById('alertNodeFilter');
+            if (!select) return;
+
+            const previous = state.alertNodeFilter;
+            const nodeNames = Object.keys(state.nodes).sort((a, b) => a.localeCompare(b));
+
+            select.innerHTML = '<option value="all">All Nodes</option>';
+            nodeNames.forEach(nodeName => {
+                const option = document.createElement('option');
+                option.value = nodeName;
+                option.textContent = nodeName;
+                select.appendChild(option);
+            });
+
+            if (previous !== 'all' && !nodeNames.includes(previous)) {
+                state.alertNodeFilter = 'all';
+            }
+
+            select.value = state.alertNodeFilter;
+        }
+
+        function updateAlerts() {
+            const panel = document.getElementById('alertsPanel');
+            const unacknowledged = state.alerts.filter(a => !a.acknowledged);
+            const filteredAlerts = unacknowledged.filter(alert => {
+                const matchesSeverity =
+                    state.alertFilter === 'all' ||
+                    (state.alertFilter === 'warning' && alert.severity === 'WARNING') ||
+                    (state.alertFilter === 'critical' && alert.severity === 'CRITICAL');
+                const matchesNode = state.alertNodeFilter === 'all' || alert.node === state.alertNodeFilter;
+                return matchesSeverity && matchesNode;
+            });
+            
+            const badgeEl = document.getElementById('alertBadge');
+            if (unacknowledged.length > 0) {
+                badgeEl.textContent = unacknowledged.length;
+                badgeEl.style.display = 'flex';
+            } else {
+                badgeEl.style.display = 'none';
+            }
+            
+            if (filteredAlerts.length === 0) {
+                panel.innerHTML = `<div class="text-center text-gray-500 py-4">${unacknowledged.length === 0 ? 'No active alerts' : 'No alerts for selected filter'}</div>`;
+                document.getElementById('clearAlertsBtn').style.display = 'none';
+                return;
+            }
+            
+            document.getElementById('clearAlertsBtn').style.display = 'block';
+            panel.innerHTML = '';
+            
+            filteredAlerts.forEach(alert => {
+                const alertEl = document.createElement('div');
+                alertEl.className = `alert-item ${alert.severity.toLowerCase()}`;
+                
+                const timeStr = new Date(alert.timestamp).toLocaleTimeString();
+                
+                alertEl.innerHTML = `
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="alert-badge">${alert.severity}</span>
+                                <span class="font-semibold text-white">${alert.node}</span>
+                                <span class="text-xs text-gray-500">${timeStr}</span>
+                            </div>
+                            <div class="text-sm font-semibold mb-1">${alert.type}</div>
+                            <div class="text-sm text-gray-400">${alert.message}</div>
+                        </div>
+                        <button class="ml-4 px-2 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded text-white whitespace-nowrap" onclick="acknowledgeAlert('${alert.id}')">
+                            ACK
+                        </button>
+                    </div>
+                `;
+                
+                panel.appendChild(alertEl);
+            });
+        }
+
+        function setAlertFilter(filter) {
+            state.alertFilter = filter;
+
+            const allBtn = document.getElementById('alertFilterAll');
+            const warningBtn = document.getElementById('alertFilterWarning');
+            const criticalBtn = document.getElementById('alertFilterCritical');
+
+            [allBtn, warningBtn, criticalBtn].forEach(btn => {
+                btn.className = 'px-2 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600 text-slate-200';
+            });
+
+            if (filter === 'all') {
+                allBtn.className = 'px-2 py-1 text-xs rounded bg-blue-600 text-white';
+            } else if (filter === 'warning') {
+                warningBtn.className = 'px-2 py-1 text-xs rounded bg-amber-500 text-slate-900 font-semibold';
+            } else if (filter === 'critical') {
+                criticalBtn.className = 'px-2 py-1 text-xs rounded bg-red-600 text-white font-semibold';
+            }
+
+            updateAlerts();
+        }
+
+        function setAlertNodeFilter(nodeName) {
+            state.alertNodeFilter = nodeName;
+            updateAlerts();
+        }
+        
+        function acknowledgeAlert(alertId) {
+            fetch(`/api/alerts/${alertId}/acknowledge`, { method: 'POST' })
+                .then(() => {
+                    state.alerts.forEach(a => {
+                        if (a.id === alertId) a.acknowledged = true;
+                    });
+                    updateAlerts();
+                });
+        }
+        
+        function updateMetricsTable() {
+            const tbody = document.getElementById('metricsTableBody');
+            const nodes = Object.values(state.nodes).filter(n => n.has_data);
+            
+            if (nodes.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="text-center text-gray-500 py-4">No nodes with data</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = '';
+            
+            nodes.forEach(node => {
+                const metric = node.last_metric;
+                if (!metric) return;
+                
+                const tr = document.createElement('tr');
+                
+                // Rate color coding
+                let rateClass = '';
+                if (metric.interest_rate > state.thresholds.interest_rate_critical) {
+                    rateClass = 'bg-danger-subtle text-danger';
+                } else if (metric.interest_rate > state.thresholds.interest_rate_warning) {
+                    rateClass = 'bg-warning-subtle text-warning';
+                }
+                
+                let satisfactionClass = '';
+                if (metric.satisfaction_ratio < state.thresholds.satisfaction_critical) {
+                    satisfactionClass = 'bg-danger-subtle text-danger';
+                } else if (metric.satisfaction_ratio < state.thresholds.satisfaction_warning) {
+                    satisfactionClass = 'bg-warning-subtle text-warning';
+                }
+                
+                tr.innerHTML = `
+                    <td class="font-semibold">${node.name}</td>
+                    <td><span class="inline-block px-2 py-1 rounded text-xs font-bold ${node.status === 'critical' ? 'bg-red-500/20 text-red-400' : node.status === 'warning' ? 'bg-amber-500/20 text-amber-400' : 'bg-green-500/20 text-green-400'}">${node.status}</span></td>
+                    <td>${metric.uptime}</td>
+                    <td ${rateClass ? `class="${rateClass}"` : ''}>${(metric.interest_rate || 0).toFixed(2)}</td>
+                    <td ${satisfactionClass ? `class="${satisfactionClass}"` : ''}>${(metric.satisfaction_ratio || 0).toFixed(1)}%</td>
+                    <td>${metric.nPitEntries}</td>
+                    <td>${metric.nCsEntries}</td>
+                    <td>${metric.nInInterests}</td>
+                    <td>${metric.nOutInterests}</td>
+                `;
+                
+                tbody.appendChild(tr);
+            });
+        }
+        
+        function updateLastUpdateTime() {
+            if (!state.lastUpdate) return;
+            
+            const now = new Date();
+            const diff = Math.floor((now - state.lastUpdate) / 1000);
+            
+            if (diff < 5) {
+                document.getElementById('lastUpdate').textContent = 'now';
+            } else if (diff < 60) {
+                document.getElementById('lastUpdate').textContent = `${diff}s ago`;
+            } else {
+                document.getElementById('lastUpdate').textContent = `${Math.floor(diff / 60)}m ago`;
+            }
+        }
+        
+        // ====================================================================
+        // Chart Management
+        // ====================================================================
+        
+        const chartConfigs = {
+            interestRateChart: { metric: 'interest_rate', label: 'Interest Rate (int/s)', color: colors.blue },
+            satisfactionChart: { metric: 'satisfaction_ratio', label: 'Satisfaction Ratio (%)', color: colors.green },
+            pitChart: { metric: 'nPitEntries', label: 'PIT Size', color: colors.purple },
+            nackChart: { metric: 'nack_rate', label: 'NACK Rate (nacks/s)', color: colors.amber }
+        };
+        
+        function loadCharts() {
+            Object.keys(chartConfigs).forEach(chartId => {
+                const config = chartConfigs[chartId];
+                const ctx = document.getElementById(chartId).getContext('2d');
+                
+                state.charts[chartId] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: []
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: { duration: 500 },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                grid: { color: 'rgba(100, 116, 139, 0.1)' },
+                                ticks: { color: '#94a3b8', font: { size: 12 } }
+                            },
+                            x: {
+                                grid: { color: 'rgba(100, 116, 139, 0.1)' },
+                                ticks: { color: '#94a3b8', font: { size: 12 } }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                labels: { color: '#e2e8f0', usePointStyle: true }
+                            }
+                        }
+                    }
+                });
+            });
+            
+            updateCharts();
+        }
+        
+        function updateCharts() {
+            const requestId = ++state.chartRequestId;
+
+            Object.keys(chartConfigs).forEach(chartId => {
+                const config = chartConfigs[chartId];
+                const chart = state.charts[chartId];
+                if (!chart) return;
+                
+                const nodes = (state.selectedNode === 'all' ? Object.values(state.nodes) : [state.nodes[state.selectedNode]].filter(Boolean))
+                    .filter(node => node && node.last_metric);
+                
+                chart.data.datasets = [];
+                chart.data.labels = [];
+
+                if (nodes.length === 0) {
+                    chart.update('none');
+                    return;
+                }
+
+                Promise.all(
+                    nodes.map(node =>
+                        fetch(`/api/nodes/${node.name}/history?limit=20`)
+                            .then(r => r.json())
+                            .then(data => ({ node, entries: data.entries || [] }))
+                            .catch(() => ({ node, entries: [] }))
+                    )
+                ).then(results => {
+                    if (requestId !== state.chartRequestId) {
+                        return;
+                    }
+
+                    let chartLabels = [];
+                    const datasets = [];
+
+                    results.forEach(({ node, entries }) => {
+                        const history = [];
+                        const labels = [];
+
+                        entries.forEach(entry => {
+                            const metric = config.metric;
+                            if (metric === 'nPitEntries') {
+                                history.push(entry[metric] || 0);
+                            } else {
+                                history.push(entry[metric] !== null ? entry[metric] : 0);
+                            }
+
+                            const time = new Date(entry.timestamp);
+                            labels.push(time.toLocaleTimeString());
+                        });
+
+                        if (labels.length > chartLabels.length) {
+                            chartLabels = labels;
+                        }
+
+                        if (history.length > 0) {
+                            datasets.push({
+                                label: node.name,
+                                data: history,
+                                borderColor: nodeColors[node.name] || config.color,
+                                backgroundColor: (nodeColors[node.name] || config.color) + '15',
+                                borderWidth: 2,
+                                fill: true,
+                                tension: 0.4,
+                                pointRadius: 3,
+                                pointHoverRadius: 5,
+                                pointBackgroundColor: nodeColors[node.name] || config.color
+                            });
+                        }
+                    });
+
+                    chart.data.labels = chartLabels;
+                    chart.data.datasets = datasets;
+                    chart.update('none');
+                });
+            });
+        }
+        
+        // ====================================================================
+        // Settings & Configuration
+        // ====================================================================
+        
+        function loadSettings() {
+            fetch('/api/config')
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('logsDirDisplay').textContent = data.logs_dir;
+                    document.getElementById('thresholdInterestWarning').value = data.thresholds.interest_rate_warning;
+                    document.getElementById('thresholdInterestCritical').value = data.thresholds.interest_rate_critical;
+                    document.getElementById('thresholdSatisfactionWarning').value = data.thresholds.satisfaction_warning;
+                    document.getElementById('thresholdSatisfactionCritical').value = data.thresholds.satisfaction_critical;
+                });
+        }
+        
+        document.getElementById('settingsBtn').addEventListener('click', () => {
+            loadSettings();
+            document.getElementById('settingsModal').classList.add('active');
+        });
+        
+        document.getElementById('closeSettingsBtn').addEventListener('click', () => {
+            document.getElementById('settingsModal').classList.remove('active');
+        });
+        
+        document.getElementById('saveSettingsBtn').addEventListener('click', () => {
+            const config = {
+                interest_rate_warning: parseFloat(document.getElementById('thresholdInterestWarning').value),
+                interest_rate_critical: parseFloat(document.getElementById('thresholdInterestCritical').value),
+                satisfaction_warning: parseFloat(document.getElementById('thresholdSatisfactionWarning').value),
+                satisfaction_critical: parseFloat(document.getElementById('thresholdSatisfactionCritical').value)
+            };
+            
+            fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config)
+            })
+            .then(() => {
+                state.thresholds = config;
+                document.getElementById('settingsModal').classList.remove('active');
+                updateMetricsCards();
+                updateMetricsTable();
+            });
+        });
+        
+        document.getElementById('clearAlertsBtn').addEventListener('click', () => {
+            state.alerts.forEach(alert => {
+                if (!alert.acknowledged) {
+                    acknowledgeAlert(alert.id);
+                }
+            });
+        });
+
+        document.getElementById('alertFilterAll').addEventListener('click', () => setAlertFilter('all'));
+        document.getElementById('alertFilterWarning').addEventListener('click', () => setAlertFilter('warning'));
+        document.getElementById('alertFilterCritical').addEventListener('click', () => setAlertFilter('critical'));
+        document.getElementById('alertNodeFilter').addEventListener('change', (event) => setAlertNodeFilter(event.target.value));
+        
+        // ====================================================================
+        // Utilities
+        // ====================================================================
+        
+        function playAlertSound() {
+            // Use Web Audio API for a simple beep
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.value = 800;
+                oscillator.type = 'sine';
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.5);
+            } catch (e) {
+                console.warn('Could not play alert sound:', e);
+            }
+        }
+        
+        // ====================================================================
+        // Update node count display
+        // ====================================================================
+        
+        setInterval(() => {
+            document.getElementById('nodeCount').textContent = Object.keys(state.nodes).length;
+            updateLastUpdateTime();
+        }, 1000);
+        
+        // ====================================================================
+        // Initialize
+        // ====================================================================
+        
+        connectWebSocket();
+        
+        // Close modal on outside click
+        document.getElementById('settingsModal').addEventListener('click', (e) => {
+            if (e.target.id === 'settingsModal') {
+                document.getElementById('settingsModal').classList.remove('active');
+            }
+        });
+    </script>
+</body>
+</html>
