@@ -1,0 +1,12 @@
+[
+  "pit_size",
+  "pit_growth_rate",
+  "cs_size",
+  "cache_hit_ratio",
+  "satisfaction_ratio",
+  "unsatisfied_ratio",
+  "in_interests_rate",
+  "out_interests_rate",
+  "in_data_rate",
+  "nack_rate"
+]
