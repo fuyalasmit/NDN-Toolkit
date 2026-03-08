@@ -38,26 +38,22 @@ def create_test_data(logs_dir="./test_NDN_LOGS"):
                 n_in_interests = base_interests + (i * 5) + (i % 3)
                 n_out_interests = base_interests + (i * 4) + (i % 2)
                 n_in_data = base_data + i
-                n_out_data = base_data + i + 2
                 n_satisfied = base_satisfied + min(i, 3) - (i % 5)
                 
                 entry = {
-                    "startTime": start_time.strftime("%Y%m%dT%H%M%S.%f")[:-3] + "000",
-                    "currentTime": current_time.strftime("%Y%m%dT%H%M%S.%f")[:-3] + "000",
-                    "uptime": 300 + (5*i),
-                    "nNameTreeEntries": 60 + i,
-                    "nFibEntries": 17 + (i % 3),
+                    "timestamp": current_time.strftime("%Y-%m-%dT%H:%M:%S.%f"),
+                    "node": node_name,
                     "nPitEntries": 3 + i // 5,
-                    "nMeasurementsEntries": 0,
-                    "nCsEntries": 114 + (i * 2),
                     "nInInterests": n_in_interests,
                     "nOutInterests": n_out_interests,
                     "nInData": n_in_data,
-                    "nOutData": n_out_data,
                     "nInNacks": 1 + (i % 4),
                     "nOutNacks": 4 + (i % 2),
                     "nSatisfiedInterests": n_satisfied,
-                    "nUnsatisfiedInterests": 10 + (i % 3) - min(2, i)
+                    "nUnsatisfiedInterests": 10 + (i % 3) - min(2, i),
+                    "nCsEntries": 114 + (i * 2),
+                    "nHits": i % 3,
+                    "nMisses": n_in_interests - (i % 3)
                 }
                 
                 f.write(json.dumps(entry) + '\n')

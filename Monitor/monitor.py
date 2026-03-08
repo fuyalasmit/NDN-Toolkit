@@ -41,28 +41,25 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MetricEntry:
     """Represents a single metrics.jsonl entry with computed values."""
-    timestamp: str
-    startTime: str
-    currentTime: str
-    uptime: int
-    nNameTreeEntries: int
-    nFibEntries: int
+    timestamp: str  # ISO format from log
+    node: str
     nPitEntries: int
-    nMeasurementsEntries: int
-    nCsEntries: int
     nInInterests: int
     nOutInterests: int
     nInData: int
-    nOutData: int
     nInNacks: int
     nOutNacks: int
     nSatisfiedInterests: int
     nUnsatisfiedInterests: int
+    nCsEntries: int
+    nHits: int
+    nMisses: int
     # Computed metrics
     interest_rate: Optional[float] = None
     satisfaction_ratio: Optional[float] = None
     nack_rate: Optional[float] = None
     data_ratio: Optional[float] = None
+    cache_hit_ratio: Optional[float] = None
 
 
 @dataclass
@@ -253,23 +250,19 @@ class NDNMonitor:
     def _parse_metric_entry(self, data: dict) -> MetricEntry:
         """Parse JSON data into MetricEntry."""
         return MetricEntry(
-            timestamp=datetime.utcnow().isoformat() + 'Z',
-            startTime=data.get('startTime', ''),
-            currentTime=data.get('currentTime', ''),
-            uptime=data.get('uptime', 0),
-            nNameTreeEntries=data.get('nNameTreeEntries', 0),
-            nFibEntries=data.get('nFibEntries', 0),
+            timestamp=data.get('timestamp', datetime.utcnow().isoformat()),
+            node=data.get('node', 'unknown'),
             nPitEntries=data.get('nPitEntries', 0),
-            nMeasurementsEntries=data.get('nMeasurementsEntries', 0),
-            nCsEntries=data.get('nCsEntries', 0),
             nInInterests=data.get('nInInterests', 0),
             nOutInterests=data.get('nOutInterests', 0),
             nInData=data.get('nInData', 0),
-            nOutData=data.get('nOutData', 0),
             nInNacks=data.get('nInNacks', 0),
             nOutNacks=data.get('nOutNacks', 0),
             nSatisfiedInterests=data.get('nSatisfiedInterests', 0),
-            nUnsatisfiedInterests=data.get('nUnsatisfiedInterests', 0)
+            nUnsatisfiedInterests=data.get('nUnsatisfiedInterests', 0),
+            nCsEntries=data.get('nCsEntries', 0),
+            nHits=data.get('nHits', 0),
+            nMisses=data.get('nMisses', 0)
         )
     
     def _compute_metrics(self, current: MetricEntry, prev: Optional[MetricEntry]) -> MetricEntry:
@@ -279,9 +272,9 @@ class NDNMonitor:
             return current
         
         try:
-            # Parse timestamps to compute time delta
-            current_time = datetime.fromisoformat(current.currentTime.replace('T', ' ').split('.')[0])
-            prev_time = datetime.fromisoformat(prev.currentTime.replace('T', ' ').split('.')[0])
+            # Parse timestamps to compute time delta (already in ISO format)
+            current_time = datetime.fromisoformat(current.timestamp.replace('Z', '').split('.')[0])
+            prev_time = datetime.fromisoformat(prev.timestamp.replace('Z', '').split('.')[0])
             time_delta_sec = max((current_time - prev_time).total_seconds(), 0.1)
             
             # Interest rate (interests/sec)
@@ -299,8 +292,15 @@ class NDNMonitor:
             else:
                 current.satisfaction_ratio = 100.0
             
-            # Data ratio (out vs in)
-            current.data_ratio = current.nOutData / max(current.nInData, 1)
+            # Data ratio (in data vs out interests)
+            current.data_ratio = current.nInData / max(current.nOutInterests, 1)
+            
+            # Cache hit ratio (percentage)
+            total_cache_access = current.nHits + current.nMisses
+            if total_cache_access > 0:
+                current.cache_hit_ratio = (current.nHits / total_cache_access) * 100
+            else:
+                current.cache_hit_ratio = 0.0
             
         except Exception as e:
             logger.warning(f"Error computing metrics: {e}")

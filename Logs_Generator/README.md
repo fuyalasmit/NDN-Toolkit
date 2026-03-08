@@ -149,30 +149,36 @@ Each `metrics.jsonl` file contains one JSON object per line:
 
 ```json
 {
-  "startTime": "20260131T090955.267000",
-  "currentTime": "20260131T091543.778000",
-  "uptime": 348,
-  "nNameTreeEntries": 60,
-  "nFibEntries": 17,
+  "timestamp": "2026-03-08T06:20:03.063749",
+  "node": "node_a",
   "nPitEntries": 3,
-  "nMeasurementsEntries": 0,
-  "nCsEntries": 114,
-  "nInInterests": 228,
-  "nOutInterests": 219,
-  "nInData": 160,
-  "nOutData": 179,
-  "nInNacks": 1,
+  "nInInterests": 207,
+  "nOutInterests": 204,
+  "nInData": 185,
+  "nInNacks": 2,
   "nOutNacks": 4,
-  "nSatisfiedInterests": 158,
-  "nUnsatisfiedInterests": 7
+  "nSatisfiedInterests": 179,
+  "nUnsatisfiedInterests": 4,
+  "nCsEntries": 170,
+  "nHits": 0,
+  "nMisses": 212
 }
 ```
 
-### Timestamp Format
-- Format: `YYYYMMDDTHHmmss.ffffff` (e.g., `20260131T090955.267000`)
-- `startTime`: Fixed at node startup
-- `currentTime`: Updates every tick
-- `uptime`: Integer seconds since startup
+### Fields Description
+- `timestamp`: ISO 8601 format timestamp (e.g., `2026-03-08T06:20:03.063749`)
+- `node`: Node name identifier
+- `nPitEntries`: Number of entries in the Pending Interest Table
+- `nInInterests`: Total incoming interests (cumulative)
+- `nOutInterests`: Total outgoing interests (cumulative)
+- `nInData`: Total incoming data packets (cumulative)
+- `nInNacks`: Total incoming NACKs (cumulative)
+- `nOutNacks`: Total outgoing NACKs (cumulative)
+- `nSatisfiedInterests`: Total satisfied interests (cumulative)
+- `nUnsatisfiedInterests`: Total unsatisfied interests (cumulative)
+- `nCsEntries`: Number of entries in Content Store (cache)
+- `nHits`: Cache hit count (cumulative)
+- `nMisses`: Cache miss count (cumulative)
 
 ## Folder Structure
 
@@ -200,7 +206,7 @@ NDN_LOGS/
 
 While running, the simulator displays a live status table showing:
 - **Node**: Node name
-- **Uptime**: Seconds since startup
+- **Uptime**: Seconds since startup (internal tracking, not in logs)
 - **Status**: NORMAL or ATTACKING
 - **In-Interests/s**: Interest rate for current tick
 - **Satisfaction %**: Percentage of satisfied interests
@@ -256,6 +262,9 @@ wc -l NDN_LOGS/node_a/metrics.jsonl
 # Pretty-print last entry
 tail -1 NDN_LOGS/node_a/metrics.jsonl | python -m json.tool
 
-# Filter entries by uptime > 100s
-jq 'select(.uptime > 100)' NDN_LOGS/node_a/metrics.jsonl
+# Filter entries by node name
+jq 'select(.node == "node_a")' NDN_LOGS/node_a/metrics.jsonl
+
+# Filter entries with high interest rate
+jq 'select(.nInInterests > 200)' NDN_LOGS/node_a/metrics.jsonl
 ```

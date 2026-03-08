@@ -47,6 +47,10 @@ class NDNNode:
         self.n_satisfied_interests = random.randint(0, 35)
         self.n_unsatisfied_interests = 0
         
+        # Cache metrics
+        self.n_hits = 0
+        self.n_misses = random.randint(0, 50)
+        
         # Growing counters (stabilize or grow slowly)
         self.n_name_tree_entries = random.randint(40, 80)
         self.n_fib_entries = random.randint(10, 20)
@@ -58,9 +62,9 @@ class NDNNode:
         self.last_in_interests_rate = 0.0
         
     def get_current_time_str(self) -> str:
-        """Get current time in NDN format."""
+        """Get current time in ISO format."""
         now = datetime.now()
-        return now.strftime("%Y%m%dT%H%M%S.%f")
+        return now.strftime("%Y-%m-%dT%H:%M:%S.%f")
     
     def get_uptime(self) -> int:
         """Get uptime in seconds."""
@@ -137,6 +141,11 @@ class NDNNode:
         cache_delta = int(self.base_cache_growth + random.uniform(-1, 1))
         cache_delta = max(0, cache_delta)
         self.n_cs_entries = min(300, self.n_cs_entries + cache_delta)
+        
+        # Cache hits and misses
+        if random.random() < 0.02:  # Occasional cache hit
+            self.n_hits += random.randint(0, 1)
+        self.n_misses += interest_delta  # Misses grow with interests
     
     def _update_attack_metrics(self, uptime: int):
         """Update metrics under attack conditions."""
@@ -166,6 +175,9 @@ class NDNNode:
             # PIT grows significantly
             self.n_pit_entries = min(10, self.n_pit_entries + random.randint(1, 4))
             
+            # Cache misses increase dramatically during attack
+            self.n_misses += interest_delta
+            
         elif self.mode == "poisoning" or (self.mode == "mixed" and self.under_attack):
             # Cache poisoning attack
             # Cache grows abnormally fast
@@ -184,26 +196,26 @@ class NDNNode:
             
             self.n_in_data += random.randint(0, 2)
             self.n_out_data += random.randint(0, 2)
+            
+            # Cache metrics during poisoning
+            self.n_misses += random.randint(0, 3)
     
     def generate_log_entry(self) -> Dict:
-        """Generate a complete log entry."""
+        """Generate a complete log entry in the new format."""
         return {
-            "startTime": self.start_time_str,
-            "currentTime": self.get_current_time_str(),
-            "uptime": self.get_uptime(),
-            "nNameTreeEntries": self.n_name_tree_entries,
-            "nFibEntries": self.n_fib_entries,
+            "timestamp": self.get_current_time_str(),
+            "node": self.name,
             "nPitEntries": self.n_pit_entries,
-            "nMeasurementsEntries": self.n_measurements_entries,
-            "nCsEntries": self.n_cs_entries,
             "nInInterests": self.n_in_interests,
             "nOutInterests": self.n_out_interests,
             "nInData": self.n_in_data,
-            "nOutData": self.n_out_data,
             "nInNacks": self.n_in_nacks,
             "nOutNacks": self.n_out_nacks,
             "nSatisfiedInterests": self.n_satisfied_interests,
             "nUnsatisfiedInterests": self.n_unsatisfied_interests,
+            "nCsEntries": self.n_cs_entries,
+            "nHits": self.n_hits,
+            "nMisses": self.n_misses,
         }
 
 

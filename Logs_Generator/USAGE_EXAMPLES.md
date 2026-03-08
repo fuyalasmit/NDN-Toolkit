@@ -126,8 +126,8 @@ tail -10 NDN_LOGS/node_a/metrics.jsonl | jq
 # Extract interest counts
 jq '.nInInterests' NDN_LOGS/node_a/metrics.jsonl
 
-# Find entries during attack window (uptime > 60)
-jq 'select(.uptime > 60)' NDN_LOGS/node_a/metrics.jsonl | head -5 | jq
+# Find entries with high interest rate (potential attack)
+jq 'select(.nInInterests > 200)' NDN_LOGS/node_a/metrics.jsonl | head -5 | jq
 
 # Calculate average satisfaction ratio
 jq '[.nSatisfiedInterests / (.nSatisfiedInterests + .nUnsatisfiedInterests)]' \
@@ -137,9 +137,9 @@ jq '[.nSatisfiedInterests / (.nSatisfiedInterests + .nUnsatisfiedInterests)]' \
 ### Compare Node Behavior
 ```bash
 # Create CSV for analysis
-echo "Uptime,Node,InInt,Sat%" > analysis.csv
+echo "Timestamp,Node,InInt,Sat%" > analysis.csv
 for node in node_a node_b node_c; do
-  jq -r '[.uptime, "'$node'", .nInInterests, 
+  jq -r '[.timestamp, .node, .nInInterests, 
     (.nSatisfiedInterests/(.nSatisfiedInterests+.nUnsatisfiedInterests)*100)] | @csv' \
     NDN_LOGS/$node/metrics.jsonl >> analysis.csv
 done

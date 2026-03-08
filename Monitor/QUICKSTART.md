@@ -74,7 +74,7 @@ Edit thresholds via:
 Create `NDN_LOGS/{node_name}/metrics.jsonl` with JSON lines:
 
 ```json
-{"startTime":"20260131T090955.267000","currentTime":"20260131T091543.778000","uptime":348,"nNameTreeEntries":60,"nFibEntries":17,"nPitEntries":3,"nMeasurementsEntries":0,"nCsEntries":114,"nInInterests":228,"nOutInterests":219,"nInData":160,"nOutData":179,"nInNacks":1,"nOutNacks":4,"nSatisfiedInterests":158,"nUnsatisfiedInterests":7}
+{"timestamp":"2026-03-08T06:20:03.063749","node":"node_a","nPitEntries":3,"nInInterests":228,"nOutInterests":219,"nInData":160,"nInNacks":1,"nOutNacks":4,"nSatisfiedInterests":158,"nUnsatisfiedInterests":7,"nCsEntries":114,"nHits":0,"nMisses":212}
 ```
 
 ## 🌐 API Endpoints
