@@ -24,6 +24,8 @@ import uvicorn
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
+from anomaly_detector import load_anomaly_detector
+
 # ============================================================================
 # Configuration & Logging
 # ============================================================================
@@ -60,6 +62,11 @@ class MetricEntry:
     nack_rate: Optional[float] = None
     data_ratio: Optional[float] = None
     cache_hit_ratio: Optional[float] = None
+    # Isolation Forest Anomaly Detection
+    anomaly_score: Optional[float] = None
+    normalized_anomaly_score: Optional[float] = None
+    is_anomaly: Optional[bool] = None
+    anomaly_confidence: Optional[str] = None
 
 
 @dataclass
@@ -106,14 +113,23 @@ class AnomalyThresholds:
 class NDNMonitor:
     """Main monitoring engine for NDN networks."""
     
-    def __init__(self, logs_dir: str):
+    def __init__(self, logs_dir: str, models_dir: str = None):
         self.logs_dir = Path(logs_dir)
+        self.models_dir = models_dir or Path(__file__).parent.parent / "Models"
         self.nodes: Dict[str, NodeStatus] = {}
         self.alerts: deque = deque(maxlen=50)  # Keep last 50 alerts
         self.thresholds = AnomalyThresholds()
         self.websocket_clients: Set[WebSocket] = set()
         self.file_watchers: Dict[str, float] = {}  # node_name -> last position
         self._discovery_lock = asyncio.Lock()
+        
+        # Load Isolation Forest anomaly detector
+        try:
+            self.anomaly_detector = load_anomaly_detector(str(self.models_dir))
+            logger.info(f"Loaded Isolation Forest anomaly detector from {self.models_dir}")
+        except Exception as e:
+            logger.error(f"Failed to load anomaly detector: {e}")
+            self.anomaly_detector = None
         
         logger.info(f"Initialized NDN Monitor for logs_dir: {logs_dir}")
     
@@ -171,12 +187,17 @@ class NDNMonitor:
                         entry_data = json.loads(line)
                         entry = self._parse_metric_entry(entry_data)
                         entry = self._compute_metrics(entry, prev_entry)
+                        
+                        # Run Isolation Forest anomaly detection
+                        if self.anomaly_detector:
+                            entry = self._run_anomaly_detection(entry, entry_data)
+                        
                         self.nodes[node_name].metric_history.append(entry)
                         self.nodes[node_name].last_metric = entry
                         self.nodes[node_name].has_data = True
                         prev_entry = entry
                         
-                        # Run anomaly detection
+                        # Run legacy anomaly detection
                         await self._check_anomalies(node_name, entry)
                     except json.JSONDecodeError as e:
                         logger.warning(f"Malformed JSON in {node_name}/metrics.jsonl: {e}")
@@ -224,12 +245,17 @@ class NDNMonitor:
                                 prev_entry = self.nodes[node_name].last_metric
                                 entry = self._compute_metrics(entry, prev_entry)
                                 
+                                # Run Isolation Forest anomaly detection
+                                if self.anomaly_detector:
+                                    entry = self._run_anomaly_detection(entry, entry_data)
+                                
                                 # Store and run detection
                                 self.nodes[node_name].metric_history.append(entry)
                                 self.nodes[node_name].last_metric = entry
                                 self.nodes[node_name].has_data = True
                                 self.nodes[node_name].status = "healthy"
                                 
+                                # Run legacy anomaly detection
                                 await self._check_anomalies(node_name, entry)
                                 
                                 # Broadcast metrics update
@@ -307,8 +333,47 @@ class NDNMonitor:
         
         return current
     
+    def _run_anomaly_detection(self, entry: MetricEntry, raw_data: dict) -> MetricEntry:
+        """Run Isolation Forest anomaly detection and update entry."""
+        if not self.anomaly_detector:
+            return entry
+        
+        try:
+            # Run detection on raw data
+            detection_result = self.anomaly_detector.ingest(raw_data)
+            
+            # Update entry with detection results
+            if detection_result['status'] == 'scored':
+                entry.anomaly_score = detection_result.get('anomaly_score')
+                entry.normalized_anomaly_score = detection_result.get('normalized_score')
+                entry.is_anomaly = detection_result.get('is_anomaly', False)
+                
+                # Set confidence level based on normalized score
+                normalized = entry.normalized_anomaly_score or 50
+                if normalized > 80:
+                    entry.anomaly_confidence = 'LOW'  # Normal
+                elif normalized > 50:
+                    entry.anomaly_confidence = 'MEDIUM'
+                else:
+                    entry.anomaly_confidence = 'HIGH'  # Anomalous
+                
+                logger.debug(f"Anomaly detection for {entry.node}: score={entry.anomaly_score:.6f}, "
+                           f"normalized={normalized:.1f}%, is_anomaly={entry.is_anomaly}")
+            
+        except Exception as e:
+            logger.error(f"Error running anomaly detection: {e}")
+        
+        return entry
+    
     async def _check_anomalies(self, node_name: str, entry: MetricEntry):
         """Check for anomalies and create alerts if needed."""
+        # Check Isolation Forest anomalies
+        if entry.is_anomaly and entry.anomaly_score is not None:
+            await self._create_alert(
+                node_name, "WARNING", "Isolation Forest Anomaly Detected",
+                f"Anomaly score: {entry.anomaly_score:.6f} (threshold: {self.anomaly_detector.threshold:.2e})"
+            )
+        
         if entry.interest_rate is None:
             return  # Not enough data yet
         

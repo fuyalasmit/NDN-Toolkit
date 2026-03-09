@@ -369,7 +369,13 @@
             </div>
 
             <!-- Overview Cards -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+                <div class="card">
+                    <div class="metric-label">Anomaly Score</div>
+                    <div class="metric-value text-red-400" id="metricAnomalyScore">—</div>
+                    <div class="text-xs text-gray-500 mt-2">ML Detection</div>
+                </div>
+                
                 <div class="card">
                     <div class="metric-label">Interest Rate</div>
                     <div class="metric-value text-blue-400" id="metricInterestRate">—</div>
@@ -392,6 +398,17 @@
                     <div class="metric-label">CS Entries</div>
                     <div class="metric-value text-amber-400" id="metricCS">—</div>
                     <div class="text-xs text-gray-500 mt-2">cache entries</div>
+                </div>
+            </div>
+
+            <!-- Main Anomaly Detection Chart (Top) -->
+            <div class="card mb-8 border-2 border-red-500/30">
+                <h3 class="metric-label mb-4 text-red-400">🤖 Isolation Forest Anomaly Detection (Main)</h3>
+                <div class="chart-container" style="height: 400px;">
+                    <canvas id="anomalyScoreChart"></canvas>
+                </div>
+                <div class="mt-4 text-xs text-gray-400 p-3 bg-slate-800/50 rounded">
+                    <strong>How to interpret:</strong> Higher scores (90-100%) indicate normal behavior. Lower scores (0-30%) indicate potential anomalies detected by the ML model. Green zone: normal, Yellow: suspicious, Red: anomalous.
                 </div>
             </div>
 
@@ -776,6 +793,7 @@
                 : [state.nodes[state.selectedNode]].filter(Boolean);
             
             if (nodes.length === 0) {
+                document.getElementById('metricAnomalyScore').textContent = '—';
                 document.getElementById('metricInterestRate').textContent = '—';
                 document.getElementById('metricSatisfaction').textContent = '—';
                 document.getElementById('metricPIT').textContent = '—';
@@ -788,6 +806,7 @@
                 .map(n => n.last_metric);
             
             if (metrics.length === 0) {
+                document.getElementById('metricAnomalyScore').textContent = '—';
                 document.getElementById('metricInterestRate').textContent = '—';
                 document.getElementById('metricSatisfaction').textContent = '—';
                 document.getElementById('metricPIT').textContent = '—';
@@ -798,6 +817,9 @@
             // Aggregate or display first
             const metric = metrics[0];
             
+            const anomalyScore = metric.normalized_anomaly_score !== undefined && metric.normalized_anomaly_score !== null
+                ? metric.normalized_anomaly_score.toFixed(1)
+                : '—';
             const interestRate = metric.interest_rate !== undefined && metric.interest_rate !== null
                 ? metric.interest_rate.toFixed(1)
                 : '—';
@@ -807,10 +829,22 @@
             const pit = metric.nPitEntries || '—';
             const cs = metric.nCsEntries || '—';
             
+            document.getElementById('metricAnomalyScore').textContent = `${anomalyScore}%`;
             document.getElementById('metricInterestRate').textContent = `${interestRate}`;
             document.getElementById('metricSatisfaction').textContent = `${satisfaction}%`;
             document.getElementById('metricPIT').textContent = `${pit}`;
             document.getElementById('metricCS').textContent = `${cs}`;
+            
+            // Color code anomaly score (red for anomalies, green for normal)
+            const anomalyEl = document.getElementById('metricAnomalyScore');
+            const anomalyVal = metric.normalized_anomaly_score || 50;
+            if (anomalyVal < 30) {
+                anomalyEl.className = 'metric-value text-red-500 font-bold';
+            } else if (anomalyVal < 60) {
+                anomalyEl.className = 'metric-value text-amber-400';
+            } else {
+                anomalyEl.className = 'metric-value text-green-400';
+            }
             
             // Color code based on thresholds
             const irateEl = document.getElementById('metricInterestRate');
@@ -1015,6 +1049,7 @@
         // ====================================================================
         
         const chartConfigs = {
+            anomalyScoreChart: { metric: 'normalized_anomaly_score', label: 'Anomaly Score (%)', color: colors.red, isAnomaly: true },
             interestRateChart: { metric: 'interest_rate', label: 'Interest Rate (int/s)', color: colors.blue },
             satisfactionChart: { metric: 'satisfaction_ratio', label: 'Satisfaction Ratio (%)', color: colors.green },
             pitChart: { metric: 'nPitEntries', label: 'PIT Size', color: colors.purple },
@@ -1026,33 +1061,78 @@
                 const config = chartConfigs[chartId];
                 const ctx = document.getElementById(chartId).getContext('2d');
                 
+                // Special configuration for anomaly score chart
+                let chartOptions = {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: { duration: 500 },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: config.isAnomaly ? 100 : undefined,
+                            grid: { color: 'rgba(100, 116, 139, 0.1)' },
+                            ticks: { color: '#94a3b8', font: { size: 12 } }
+                        },
+                        x: {
+                            grid: { color: 'rgba(100, 116, 139, 0.1)' },
+                            ticks: { color: '#94a3b8', font: { size: 12 } }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: { color: '#e2e8f0', usePointStyle: true }
+                        },
+                        filler: {
+                            propagate: true
+                        }
+                    }
+                };
+                
+                // Add background regions for anomaly chart
+                if (config.isAnomaly) {
+                    chartOptions.plugins.annotation = {
+                        annotations: {
+                            box1: {
+                                type: 'box',
+                                xMin: 0,
+                                xMax: '100%',
+                                yMin: 0,
+                                yMax: 30,
+                                backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                                borderColor: 'rgba(239, 68, 68, 0.2)',
+                                borderWidth: 1
+                            },
+                            box2: {
+                                type: 'box',
+                                xMin: 0,
+                                xMax: '100%',
+                                yMin: 30,
+                                yMax: 60,
+                                backgroundColor: 'rgba(234, 179, 8, 0.05)',
+                                borderColor: 'rgba(234, 179, 8, 0.2)',
+                                borderWidth: 1
+                            },
+                            box3: {
+                                type: 'box',
+                                xMin: 0,
+                                xMax: '100%',
+                                yMin: 60,
+                                yMax: 100,
+                                backgroundColor: 'rgba(34, 197, 94, 0.05)',
+                                borderColor: 'rgba(34, 197, 94, 0.2)',
+                                borderWidth: 1
+                            }
+                        }
+                    };
+                }
+                
                 state.charts[chartId] = new Chart(ctx, {
                     type: 'line',
                     data: {
                         labels: [],
                         datasets: []
                     },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        animation: { duration: 500 },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                grid: { color: 'rgba(100, 116, 139, 0.1)' },
-                                ticks: { color: '#94a3b8', font: { size: 12 } }
-                            },
-                            x: {
-                                grid: { color: 'rgba(100, 116, 139, 0.1)' },
-                                ticks: { color: '#94a3b8', font: { size: 12 } }
-                            }
-                        },
-                        plugins: {
-                            legend: {
-                                labels: { color: '#e2e8f0', usePointStyle: true }
-                            }
-                        }
-                    }
+                    options: chartOptions
                 });
             });
             
@@ -1114,18 +1194,51 @@
                         }
 
                         if (history.length > 0) {
-                            datasets.push({
-                                label: node.name,
-                                data: history,
-                                borderColor: nodeColors[node.name] || config.color,
-                                backgroundColor: (nodeColors[node.name] || config.color) + '15',
-                                borderWidth: 2,
-                                fill: true,
-                                tension: 0.4,
-                                pointRadius: 3,
-                                pointHoverRadius: 5,
-                                pointBackgroundColor: nodeColors[node.name] || config.color
-                            });
+                            // Special handling for anomaly score chart
+                            let fillColor = (nodeColors[node.name] || config.color) + '15';
+                            let borderColor = nodeColors[node.name] || config.color;
+                            
+                            // For anomaly chart, use dynamic coloring based on score values
+                            if (config.isAnomaly) {
+                                // Create a gradient effect based on values
+                                // Anomalies (red): < 30%, Suspicious (yellow): 30-60%, Normal (green): > 60%
+                                const pointColors = history.map(val => {
+                                    if (val < 30) return '#ef4444';       // Red
+                                    if (val < 60) return '#eab308';       // Amber
+                                    return '#22c55e';                    // Green
+                                });
+                                
+                                datasets.push({
+                                    label: node.name,
+                                    data: history,
+                                    borderColor: '#ef4444',  // Red border
+                                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                    borderWidth: 2,
+                                    fill: true,
+                                    tension: 0.4,
+                                    pointRadius: 4,
+                                    pointHoverRadius: 6,
+                                    pointBackgroundColor: pointColors,
+                                    pointBorderColor: pointColors,
+                                    pointBorderWidth: 2,
+                                    segment: {
+                                        borderColor: ctx => ctx.p0DataIndex < history.length ? (history[ctx.p0DataIndex] < 30 ? '#ef4444' : history[ctx.p0DataIndex] < 60 ? '#eab308' : '#22c55e') : '#94a3b8'
+                                    }
+                                });
+                            } else {
+                                datasets.push({
+                                    label: node.name,
+                                    data: history,
+                                    borderColor: borderColor,
+                                    backgroundColor: fillColor,
+                                    borderWidth: 2,
+                                    fill: true,
+                                    tension: 0.4,
+                                    pointRadius: 3,
+                                    pointHoverRadius: 5,
+                                    pointBackgroundColor: borderColor
+                                });
+                            }
                         }
                     });
 
