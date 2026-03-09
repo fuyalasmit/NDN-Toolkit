@@ -1,18 +1,27 @@
 # NDN Network Monitoring Dashboard
 
-A professional, real-time monitoring dashboard for Named Data Networking (NDN) networks. This application watches an NDN_LOGS directory, auto-discovers nodes, tails their metrics, computes real-time metrics, detects anomalies, and displays everything in a polished, interactive web dashboard with alerting capabilities.
+A professional, real-time monitoring dashboard for Named Data Networking (NDN) networks. This application watches an NDN_LOGS directory, auto-discovers nodes, tails their metrics, computes real-time metrics, detects anomalies using **machine learning (Isolation Forest)**, and displays everything in a polished, interactive web dashboard with alerting capabilities.
 
 ## Features
 
 - **Real-time Monitoring**: Live updates via WebSocket every ~5 seconds
 - **Auto-Discovery**: Automatically detects new NDN nodes as folders appear in NDN_LOGS
-- **Anomaly Detection**: 
+- **ML-Powered Anomaly Detection** ⭐ **NEW**:
+  - **Isolation Forest Model**: Pre-trained deep anomaly detector analyzing 10 network features
+  - **Real-time Scoring**: Continuous anomaly scoring on live metrics
+  - **Color-Coded Zones**:
+    - 🟢 Green (60-100%): Normal operation
+    - 🟡 Yellow (30-60%): Suspicious behavior
+    - 🔴 Red (0-30%): Potential anomaly/attack
+  - **Main Dashboard Chart**: Large anomaly score visualization prominently displayed
+- **Legacy Anomaly Detection**:
   - Interest Flooding Attack detection
   - Cache Poisoning / High Drop Rate detection
   - Configurable alert thresholds
 - **Rich Dashboard**:
   - Node selector with status indicators
-  - Real-time metric cards (Interest Rate, Satisfaction Ratio, PIT Size, CS Entries)
+  - Real-time metric cards including **ML Anomaly Score**
+  - **Large Main Anomaly Chart** (top of dashboard)
   - Time-series charts for trend analysis (last 20 data points)
   - Alert panel with toast notifications
   - Detailed metrics table with color-coding
@@ -27,6 +36,8 @@ A professional, real-time monitoring dashboard for Named Data Networking (NDN) n
   - FastAPI for REST API and WebSocket
   - uvicorn for ASGI server
   - watchdog for file system watching (optional, uses polling fallback)
+  - **scikit-learn for ML anomaly detection** ⭐ **NEW**
+  - **joblib for model serialization**
 - **Frontend**: Single HTML file
   - Tailwind CSS (CDN)
   - Chart.js (CDN)
