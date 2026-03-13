@@ -14,7 +14,7 @@ db.sqlite3
 
 # Our Generator's output
 Logs_Generator/NDN_Logs/
-Logs/
+Logs/*
 !Logs/*.tar.gz
 
 .ipynb_checkpoints/
