@@ -16,6 +16,7 @@ db.sqlite3
 Logs_Generator/NDN_Logs/
 Logs/*
 !Logs/*.tar.gz
+!Logs/README.md
 
 .ipynb_checkpoints/
 Results/
