@@ -1,5 +1,6 @@
 # Cause I have proposals and reports here
 *.pdf
+notes.txt
 
 # General Python stuff
 __pycache__/
@@ -17,6 +18,8 @@ Logs_Generator/NDN_Logs/
 Logs/*
 !Logs/*.tar.gz
 !Logs/README.md
+*.csv
 
 .ipynb_checkpoints/
 Results/
+.DS_Store
