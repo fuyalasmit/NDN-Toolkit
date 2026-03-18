@@ -1,6 +1,8 @@
 # Cause I have proposals and reports here
 *.pdf
 notes.txt
+todo.md
+data_analysis.md
 
 # General Python stuff
 __pycache__/
