@@ -30,13 +30,18 @@
 
 The dataset contains three files:
 
-- anomaly_traffic_features.csv
-  - This contains only the data from two files `logs_dumbbell_ifa` and `logs_tree_cp`
-  - This data need to be filtered out we collect data only when node starts to behave like anomaly
-- normal_traffic_features.csv
-  - Contains normal traffic data from three files `logs1`,`logs_mesh1` and `logs_dumbbell1`
-- ndn_mixed_normal_anomaly_features.csv
+- `anomaly_traffic_features.csv`
+- This contains only the data from two files `logs_dumbbell_ifa` and `logs_tree_cp`
+- The respective node of each file while is behaving as anomlay is flagged as such. Rest is normal
+- Contains normal traffic data from three files `logs1`,`logs_mesh1` and `logs_dumbbell1`
+- `ndn_mixed_normal_anomaly_features.csv`
   - mixed data from all logs, labeled aswell.
+- `normal_traffic_features.csv`
+  - contains only normal traffic, use for initial training of model
+- `cp_attack_features.csv`
+  - this contains data of content poisioning attack
+- `ifa_attack_features.csv`
+  - the interest flooding attack dataset
 
 ### Initial Features
 
