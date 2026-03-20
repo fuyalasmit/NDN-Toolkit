@@ -1,9 +1,10 @@
 {
-  "threshold": 3.112337861391201e-17,
-  "contamination": 0.05,
-  "anomaly_percentile": 5,
+  "threshold": -3.5754954769498526e-17,
+  "contamination": 0.01,
+  "anomaly_percentile": 1,
   "n_estimators": 200,
   "trained_on_nodes": [
+    "bottleneck",
     "c1",
     "c2",
     "c3",
@@ -17,6 +18,6 @@
     "r3",
     "r4"
   ],
-  "n_training_samples": 5519,
-  "trained_at": "2026-03-08T17:41:35.634392"
+  "n_training_samples": 126423,
+  "trained_at": "2026-03-20T20:02:32.559042"
 }
