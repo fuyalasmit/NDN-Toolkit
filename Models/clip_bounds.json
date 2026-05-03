@@ -1,0 +1,22 @@
+{
+  "pit_growth_rate": {
+    "lo": 0.0,
+    "hi": 0.0
+  },
+  "in_interests_rate": {
+    "lo": 0.0,
+    "hi": 18.948372891442
+  },
+  "out_interests_rate": {
+    "lo": 0.0,
+    "hi": 11.817626604668142
+  },
+  "in_data_rate": {
+    "lo": 0.0,
+    "hi": 11.493857754722267
+  },
+  "nack_rate": {
+    "lo": 0.0,
+    "hi": 0.0
+  }
+}

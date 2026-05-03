@@ -1,5 +1,5 @@
 {
-  "threshold": -3.5754954769498526e-17,
+  "threshold": 0.0,
   "contamination": 0.01,
   "anomaly_percentile": 1,
   "n_estimators": 200,
@@ -19,5 +19,9 @@
     "r4"
   ],
   "n_training_samples": 126423,
-  "trained_at": "2026-03-20T20:02:32.559042"
+  "trained_at": "2026-03-29T10:12:06.080291",
+  "score_min": -0.14618068575437348,
+  "score_max": 0.2832349060312969,
+  "score_mean": 0.18853112639099628,
+  "score_std": 0.07337375119248762
 }

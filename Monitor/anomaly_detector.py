@@ -43,39 +43,58 @@ class IsolationForestAnomalyDetector:
         self.threshold = None
         self.feature_cols = None
         self.metadata = None
-        self._buffers = {}  # node_name -> deque of recent entries
+        self.clip_bounds = {}   # rate-feature clip bounds from training
+        self.score_min   = -0.5 # training score range — for display normalization
+        self.score_max   =  2.0
+        self._buffers    = {}   # node_name -> deque of recent entries
         
         self._load_model()
         
     def _load_model(self):
-        """Load the saved pipeline, threshold, and feature columns."""
+        """Load the saved pipeline, threshold, feature columns, and clip bounds."""
         try:
-            pipeline_path = self.model_dir / "ndn_isolation_forest.joblib"
-            threshold_path = self.model_dir / "ndn_threshold.json"
-            features_path = self.model_dir / "feature_cols.json"
-            
-            if not pipeline_path.exists():
-                raise FileNotFoundError(f"Model not found at {pipeline_path}")
-            if not threshold_path.exists():
-                raise FileNotFoundError(f"Threshold not found at {threshold_path}")
-            if not features_path.exists():
-                raise FileNotFoundError(f"Feature columns not found at {features_path}")
-            
+            pipeline_path   = self.model_dir / "ndn_isolation_forest.joblib"
+            threshold_path  = self.model_dir / "ndn_threshold.json"
+            features_path   = self.model_dir / "feature_cols.json"
+            clip_bounds_path= self.model_dir / "clip_bounds.json"
+
+            for p in [pipeline_path, threshold_path, features_path]:
+                if not p.exists():
+                    raise FileNotFoundError(f"Required artifact not found: {p}")
+
             self.pipeline = joblib.load(str(pipeline_path))
-            
+
             with open(threshold_path, 'r') as f:
                 threshold_data = json.load(f)
                 self.threshold = threshold_data['threshold']
-                self.metadata = threshold_data
-            
+                self.metadata  = threshold_data
+
             with open(features_path, 'r') as f:
                 self.feature_cols = json.load(f)
-            
+
+            # Clip bounds are saved by ndn_pipeline.py; fall back gracefully if absent
+            if clip_bounds_path.exists():
+                with open(clip_bounds_path, 'r') as f:
+                    self.clip_bounds = json.load(f)
+                logger.info(f"Clip bounds loaded from {clip_bounds_path}")
+            else:
+                self.clip_bounds = {}
+                logger.warning(
+                    f"clip_bounds.json not found at {clip_bounds_path}. "
+                    "Rate features will not be clipped — retrain with ndn_pipeline.py "
+                    "to generate this file."
+                )
+
+            # Training score range — used to calibrate the 0-100 display scale.
+            # Falls back to hardcoded defaults if the model predates this field.
+            self.score_min = threshold_data.get('score_min', -0.5)
+            self.score_max = threshold_data.get('score_max',  2.0)
+
             logger.info(f"Loaded Isolation Forest model from {self.model_dir}")
             logger.info(f"Threshold: {self.threshold}")
             logger.info(f"Features: {self.feature_cols}")
             logger.info(f"Trained on {self.metadata['n_training_samples']} samples")
-            
+
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
             raise
@@ -178,106 +197,102 @@ class IsolationForestAnomalyDetector:
     
     def _compute_features(self, prev_entry: dict, curr_entry: dict) -> Tuple[Optional[np.ndarray], Optional[Dict]]:
         """
-        Compute 10 feature vector from consecutive metric entries.
-        
+        Compute 10-feature vector from two consecutive metric entries.
+
+        All ratio features (cache_hit_ratio, satisfaction_ratio, unsatisfied_ratio)
+        are computed from per-interval *deltas*, not cumulative counters.
+        This matches engineer_features_pair() in ndn_pipeline.py exactly.
+
         Returns:
             (feature_array, feature_dict) or (None, None) if computation fails
         """
         try:
-            # Extract timestamps and compute delta
-            prev_ts_str = prev_entry.get('timestamp', '')
-            curr_ts_str = curr_entry.get('timestamp', '')
-            
-            try:
-                prev_time = datetime.fromisoformat(prev_ts_str.replace('Z', '+00:00').split('.')[0])
-                curr_time = datetime.fromisoformat(curr_ts_str.replace('Z', '+00:00').split('.')[0])
-            except:
-                # Fallback for different timestamp formats
-                prev_time = datetime.fromisoformat(prev_ts_str.replace('Z', '').split('.')[0])
-                curr_time = datetime.fromisoformat(curr_ts_str.replace('Z', '').split('.')[0])
-            
+            # ── Timestamps & dt ───────────────────────────────────────────────
+            prev_ts = prev_entry.get('timestamp', '')
+            curr_ts = curr_entry.get('timestamp', '')
+            prev_time = datetime.fromisoformat(prev_ts.replace('Z', '').split('.')[0])
+            curr_time = datetime.fromisoformat(curr_ts.replace('Z', '').split('.')[0])
+
             dt = (curr_time - prev_time).total_seconds()
             if dt <= 0:
                 return None, None
-            
-            # Clamp to reasonable minimum (avoid division by very small numbers)
             dt = max(dt, 0.1)
-            
-            # Absolute features (from current measurement)
+
+            # ── Absolute features ─────────────────────────────────────────────
             pit_size = float(curr_entry.get('nPitEntries', 0))
-            cs_size = float(curr_entry.get('nCsEntries', 0))
-            
-            # Rate features (delta / seconds)
-            pit_diff = float(curr_entry.get('nPitEntries', 0)) - float(prev_entry.get('nPitEntries', 0))
-            pit_growth_rate = pit_diff / dt
-            
-            in_interests_diff = float(curr_entry.get('nInInterests', 0)) - float(prev_entry.get('nInInterests', 0))
-            in_interests_rate = in_interests_diff / dt
-            
-            out_interests_diff = float(curr_entry.get('nOutInterests', 0)) - float(prev_entry.get('nOutInterests', 0))
-            out_interests_rate = out_interests_diff / dt
-            
-            in_data_diff = float(curr_entry.get('nInData', 0)) - float(prev_entry.get('nInData', 0))
-            in_data_rate = in_data_diff / dt
-            
-            nack_diff = (float(curr_entry.get('nInNacks', 0)) + float(curr_entry.get('nOutNacks', 0))) - \
-                       (float(prev_entry.get('nInNacks', 0)) + float(prev_entry.get('nOutNacks', 0)))
+            cs_size  = float(curr_entry.get('nCsEntries',  0))
+
+            # ── Rate features (delta / dt) ────────────────────────────────────
+            pit_growth_rate    = (float(curr_entry.get('nPitEntries',  0)) - float(prev_entry.get('nPitEntries',  0))) / dt
+            in_interests_rate  = (float(curr_entry.get('nInInterests', 0)) - float(prev_entry.get('nInInterests', 0))) / dt
+            out_interests_rate = (float(curr_entry.get('nOutInterests',0)) - float(prev_entry.get('nOutInterests',0))) / dt
+            in_data_rate       = (float(curr_entry.get('nInData',      0)) - float(prev_entry.get('nInData',      0))) / dt
+            nack_diff = (float(curr_entry.get('nInNacks',  0)) + float(curr_entry.get('nOutNacks',  0))) \
+                      - (float(prev_entry.get('nInNacks',  0)) + float(prev_entry.get('nOutNacks',  0)))
             nack_rate = nack_diff / dt
-            
-            # Ratio features (instantaneous from current measurement)
-            nHits = float(curr_entry.get('nHits', 0))
-            nMisses = float(curr_entry.get('nMisses', 0))
-            cache_hit_ratio = nHits / (nHits + nMisses) if (nHits + nMisses) > 0 else 0.0
-            
-            nSat = float(curr_entry.get('nSatisfiedInterests', 0))
-            nUnsat = float(curr_entry.get('nUnsatisfiedInterests', 0))
-            satisfaction_ratio = nSat / (nSat + nUnsat) if (nSat + nUnsat) > 0 else 0.0
-            unsatisfied_ratio = nUnsat / (nSat + nUnsat) if (nSat + nUnsat) > 0 else 0.0
-            
-            # Build feature vector in correct order
+
+            # ── Ratio features — delta-based (THE FIX) ────────────────────────
+            # Old code used cumulative totals (nHits / (nHits + nMisses)).
+            # Because nMisses grows monotonically, that ratio drifted over time
+            # and diverged from the training distribution → false anomalies.
+            # Now we compute from per-interval deltas, matching training.
+            d_hits   = float(curr_entry.get('nHits',   0)) - float(prev_entry.get('nHits',   0))
+            d_misses = float(curr_entry.get('nMisses', 0)) - float(prev_entry.get('nMisses', 0))
+            d_cache  = d_hits + d_misses
+            cache_hit_ratio = d_hits / d_cache if d_cache > 0 else 0.0
+
+            d_sat   = float(curr_entry.get('nSatisfiedInterests',   0)) - float(prev_entry.get('nSatisfiedInterests',   0))
+            d_unsat = float(curr_entry.get('nUnsatisfiedInterests', 0)) - float(prev_entry.get('nUnsatisfiedInterests', 0))
+            d_total = d_sat + d_unsat
+            satisfaction_ratio = d_sat   / d_total if d_total > 0 else 0.0
+            unsatisfied_ratio  = d_unsat / d_total if d_total > 0 else 0.0
+
+            # ── Build feature vector ──────────────────────────────────────────
             features = [
-                pit_size,
-                pit_growth_rate,
-                cs_size,
-                cache_hit_ratio,
-                satisfaction_ratio,
-                unsatisfied_ratio,
-                in_interests_rate,
-                out_interests_rate,
-                in_data_rate,
-                nack_rate
+                pit_size, pit_growth_rate, cs_size,
+                cache_hit_ratio, satisfaction_ratio, unsatisfied_ratio,
+                in_interests_rate, out_interests_rate, in_data_rate, nack_rate,
             ]
-            
+
+            # ── Apply training-time clip bounds to rate features ──────────────
+            rate_cols = ['pit_growth_rate', 'in_interests_rate', 'out_interests_rate',
+                         'in_data_rate', 'nack_rate']
+            for i, col in enumerate(self.feature_cols):
+                if col in rate_cols and col in self.clip_bounds:
+                    features[i] = max(self.clip_bounds[col]['lo'],
+                                      min(self.clip_bounds[col]['hi'], features[i]))
+
             feature_array = np.array(features)
-            
-            # Create feature dict for logging/debugging
-            feature_dict = {col: float(val) for col, val in zip(self.feature_cols, features)}
-            
+            feature_dict  = {col: float(val) for col, val in zip(self.feature_cols, features)}
+
             return feature_array, feature_dict
-        
+
         except Exception as e:
             logger.error(f"Error computing features: {e}")
             return None, None
     
     def _normalize_score(self, score: float) -> float:
         """
-        Normalize anomaly score to 0-100 scale for UI.
-        
-        Lower scores are more anomalous, so we invert.
-        This is a heuristic normalization based on typical score ranges.
+        Normalize anomaly score to 0-100 scale for UI display.
+
+        Uses the training score distribution so the scale is always calibrated
+        to this specific model:
+          - score >= threshold  →  30–100%  (green / normal zone)
+          - score <  threshold  →   0–30%   (red / anomaly zone)
+
+        The 30% boundary aligns with the dashboard's red-threshold (< 30).
         """
         try:
-            # Typical range: -0.5 to 2.0, threshold near 3.1e-17
-            # We'll map to 0-100 where 100 = completely normal, 0 = extremely anomalous
-            
-            # Shift and scale
-            # -0.5 -> ~0%, 2.0 -> ~100%
-            normalized = ((score + 0.5) / 2.5) * 100
-            # Clamp to 0-100
-            normalized = max(0, min(100, normalized))
-            return normalized
-        except:
-            return 50.0  # Default to middle if error
+            thr = self.threshold
+            if score >= thr:
+                denom = (self.score_max - thr) or 1e-9
+                normalized = 30.0 + (score - thr) / denom * 70.0
+            else:
+                denom = (thr - self.score_min) or 1e-9
+                normalized = 30.0 * (score - self.score_min) / denom
+            return max(0.0, min(100.0, normalized))
+        except Exception:
+            return 50.0
 
 
 # ============================================================================
